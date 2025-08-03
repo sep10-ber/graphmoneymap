@@ -111,7 +111,6 @@
             { source: "총 지출", target: "S카드", value: 10 },
             { source: "H 카드", target: "W은행", value: 10 },
             { source: "S카드", target: "W은행", value: 10 },
-            // --- 새로운 엣지 추가 ---
             { source: "총 소득", target: "투자/저축", value: 50 }
         ];
 
@@ -176,7 +175,6 @@
             })
             .attr("stroke-width", 2);
 
-        // --- 노드 텍스트 로직 수정 ---
         nodeGroup.append("text")
             .attr("text-anchor", "middle")
             .attr("y", d => d.details ? -5 : (d.summary ? -5 : 4))
@@ -307,6 +305,7 @@
             }
         });
 
+        // --- 클릭 핸들러 수정 ---
         nodeGroup.on("click", (event, d) => {
             if (d.id.startsWith('2025.')) return;
             event.stopPropagation();
@@ -316,6 +315,17 @@
             } else {
                 selectedNode = d;
                 highlight(d);
+
+                // --- 중심 이동 로직 추가 ---
+                const k = d3.zoomTransform(svg.node()).k; // 현재 줌 스케일 가져오기
+                
+                svg.transition().duration(750).call(
+                    zoomHandler.transform,
+                    d3.zoomIdentity
+                      .translate(width / 2, height / 2)
+                      .scale(k) // 현재 줌 레벨 유지
+                      .translate(-d.x, -d.y)
+                );
             }
         });
 

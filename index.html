@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>돈의 지도</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f8f9fa;
+            color: #333;
+            overflow: hidden; /* 스크롤 방지 */
+        }
+        h1 {
+            color: #2c3e50;
+            margin: 0;
+            font-weight: 700;
+        }
+        p {
+            color: #7f8c8d;
+            margin-top: 5px;
+            margin-bottom: 20px;
+        }
+        svg {
+            cursor: grab;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        .link {
+            stroke-opacity: 0.6;
+            transition: stroke 0.2s ease-in-out;
+        }
+        .arrow {
+            transition: fill 0.2s ease-in-out;
+        }
+        .node text {
+            pointer-events: none;
+            font-size: 12px;
+            font-weight: bold;
+            fill: #333;
+        }
+        /* 상세 정보 텍스트 스타일 */
+        .detail-text-group, .summary-text {
+             pointer-events: none;
+        }
+        .detail-text {
+            font-size: 10px;
+            font-weight: normal;
+        }
+        .sub-detail-text {
+            font-size: 9px;
+            font-weight: normal;
+            fill: #888;
+        }
+        .summary-text {
+            font-size: 12px;
+            font-weight: bold;
+            fill: #e74c3c; /* 붉은색 */
+        }
+        /* 노드 원에 대한 전환 효과 추가 */
+        .node circle {
+            transition: filter 0.2s ease-in-out, stroke 0.2s ease-in-out;
+        }
+        /* 하이라이트 효과를 위한 클래스 */
+        .node.highlight circle {
+            filter: drop-shadow(0 3px 6px rgba(0,0,0,0.2));
+        }
+        .badge text {
+            fill: #fff;
+            font-size: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>돈의 지도</h1>
+    <p>노드를 클릭하거나 호버하여 돈의 흐름을 강조해보세요.</p>
+    <svg id="money-map"></svg>
+
+    <script>
+        // --- 데이터 정의 (모든 노드 포함) ---
+        const nodes = [
+            { id: "총 소득", group: 1, value: 350, count: 2 },
+            { id: "2025.01", group: 1, value: 350, count: 9 },
+            { id: "투자/저축", group: 2, value: 190, count: 3 }, 
+            { id: "총 지출", group: 3, value: 160, count: 4, summary: "-2,698,300원" },
+            { id: "K은행", group: 3, value: 80, parent: "총 지출", details: ["주거비", "1,200,000원", "K은행 ****-2847"] },
+            { id: "W은행", group: 3, value: 60, parent: "총 지출", details: ["공과금", "156,800원", "W은행 ****-7890"] },
+            { id: "H 카드", group: 4, value: 48, parent: "총 지출", details: ["교통비", "485,300원", "H카드 ****-5678"] },
+            { id: "S카드", group: 4, value: 85, parent: "총 지출", details: ["식비", "856,200원", "S카드 ****-1234"] }
+        ];
+
+        const links = [
+            { source: "총 소득", target: "2025.01", value: 350 },
+            { source: "2025.01", target: "투자/저축", value: 170 },
+            { source: "2025.01", target: "총 지출", value: 160 },
+            { source: "총 지출", target: "K은행", value: 80 },
+            { source: "총 지출", target: "W은행", value: 60 },
+            { source: "총 지출", target: "H 카드", value: 10 },
+            { source: "총 지출", target: "S카드", value: 10 },
+            { source: "H 카드", target: "W은행", value: 10 },
+            { source: "S카드", target: "W은행", value: 10 },
+            // --- 새로운 엣지 추가 ---
+            { source: "총 소득", target: "투자/저축", value: 50 }
+        ];
+
+        // --- 시각화 설정 (크기 고정) ---
+        const width = 1200;
+        const height = 530;
+
+        const color = d3.scaleOrdinal(["#2ecc71", "#3498db", "#e74c3c", "#e74c3c"]);
+        const incomeColor = "#2ecc71";
+        const assetColor = "#3498db";
+        const outcomeColor = "#e74c3c";
+
+        const simulation = d3.forceSimulation(nodes)
+            .force("link", d3.forceLink(links).id(d => d.id).distance(180).strength(0.7))
+            .force("charge", d3.forceManyBody().strength(-1000))
+            .force("center", d3.forceCenter(width / 2, height / 2));
+
+        const svg = d3.select("#money-map")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height]);
+
+        const g = svg.append("g");
+        
+        const getNodeRadius = (d) => {
+            let radius = 15 + Math.sqrt(d.value) * 1.5;
+            if (d.id.startsWith('2025.')) {
+                radius *= 1.2;
+            }
+            return radius;
+        };
+
+        const linkGroup = g.append("g")
+            .selectAll("g")
+            .data(links)
+            .join("g");
+
+        const linkLines = linkGroup.append("line")
+            .attr("class", "link")
+            .attr("stroke-width", d => Math.sqrt(d.value) / 2)
+            .attr("stroke", "#999");
+
+        const linkArrows = linkGroup.append("path")
+            .attr("class", "arrow")
+            .attr("fill", "#999")
+            .attr("d", "M0,-5L10,0L0,5");
+
+        const nodeGroup = g.append("g")
+            .attr("class", "nodes")
+            .selectAll("g")
+            .data(nodes)
+            .join("g")
+            .attr("class", "node")
+            .call(drag(simulation));
+
+        const circles = nodeGroup.append("circle")
+            .attr("r", d => getNodeRadius(d))
+            .attr("fill", "#ffffff")
+            .attr("stroke", d => {
+                if (d.id.startsWith('2025.')) return '#000000';
+                return color(d.group);
+            })
+            .attr("stroke-width", 2);
+
+        // --- 노드 텍스트 로직 수정 ---
+        nodeGroup.append("text")
+            .attr("text-anchor", "middle")
+            .attr("y", d => d.details ? -5 : (d.summary ? -5 : 4))
+            .style("font-size", d => d.id.startsWith('2025.') ? '14.4px' : '12px')
+            .style("font-weight", "bold")
+            .text(d => d.id);
+        
+        const detailTexts = nodeGroup.filter(d => d.details)
+            .append("text")
+            .attr("class", "detail-text-group")
+            .attr("text-anchor", "middle")
+            .attr("y", d => getNodeRadius(d) + 14);
+
+        detailTexts.each(function(d) {
+            const textElement = d3.select(this);
+            d.details.forEach((line, i) => {
+                textElement.append("tspan")
+                    .attr("x", 0)
+                    .attr("dy", i === 0 ? 0 : "1.2em")
+                    .attr("class", i === 2 ? "sub-detail-text" : "detail-text")
+                    .text(line);
+            });
+        });
+
+        const summaryText = nodeGroup.filter(d => d.summary)
+            .append("text")
+            .attr("class", "summary-text")
+            .attr("text-anchor", "middle")
+            .attr("y", d => getNodeRadius(d) + 14)
+            .text(d => d.summary);
+        
+        const badge = nodeGroup.filter(d => d.count)
+            .append("g")
+            .attr("class", "badge")
+            .attr("transform", d => {
+                const r = getNodeRadius(d);
+                const x = r * 0.707;
+                const y = -r * 0.707;
+                return `translate(${x}, ${y})`;
+            });
+
+        badge.append("circle")
+            .attr("r", 10)
+            .attr("fill", d => {
+                if (d.id.startsWith('2025.')) return '#000000';
+                return color(d.group);
+            });
+
+        badge.append("text")
+            .text(d => d.count)
+            .attr("text-anchor", "middle")
+            .attr("dy", "0.35em");
+        
+        nodeGroup.append("title")
+            .text(d => `${d.id}\n금액: ${d.value}만원`);
+
+        simulation.on("tick", () => {
+            linkLines
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            linkArrows.attr("transform", d => {
+                const midX = (d.source.x + d.target.x) / 2;
+                const midY = (d.source.y + d.target.y) / 2;
+                const angle = Math.atan2(d.target.y - d.source.y, d.target.x - d.source.x) * (180 / Math.PI);
+                return `translate(${midX}, ${midY}) rotate(${angle})`;
+            });
+
+            nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
+        });
+
+        const zoomHandler = d3.zoom().scaleExtent([0.2, 5]).on("zoom", (event) => {
+            g.attr("transform", event.transform);
+        });
+        svg.call(zoomHandler);
+
+        let selectedNode = null;
+
+        function highlight(d) {
+            if (d) {
+                const mainNode = d.parent ? nodes.find(n => n.id === d.parent) : d;
+                const nodeHighlightColor = color(mainNode.group);
+
+                nodeGroup.classed("highlight", n => n === d || n === mainNode);
+                circles.attr("stroke", n => {
+                    if (n === d || n === mainNode) return nodeHighlightColor;
+                    if (n.id.startsWith('2025.')) return '#000000';
+                    return color(n.group);
+                });
+
+                const colorLogic = (l) => {
+                    if (l.source === mainNode || l.target === mainNode || l.source === d || l.target === d) {
+                        if (l.source.id === '총 소득') return incomeColor;
+                        if (l.target.id === '투자/저축') return assetColor;
+                        return outcomeColor;
+                    }
+                    return "#999";
+                };
+
+                linkLines.attr("stroke", colorLogic);
+                linkArrows.attr("fill", colorLogic);
+            }
+        }
+
+        function unhighlight() {
+            nodeGroup.classed("highlight", false);
+            circles.attr("stroke", n => {
+                if (n.id.startsWith('2025.')) return '#000000';
+                return color(n.group);
+            });
+            linkLines.attr("stroke", "#999");
+            linkArrows.attr("fill", "#999");
+        }
+
+        nodeGroup.on("mouseover", (event, d) => {
+            if (d.id.startsWith('2025.')) return;
+            if (selectedNode === null) {
+                highlight(d);
+            }
+        });
+
+        nodeGroup.on("mouseout", (event, d) => {
+            if (d.id.startsWith('2025.')) return;
+            if (selectedNode === null) {
+                unhighlight();
+            }
+        });
+
+        nodeGroup.on("click", (event, d) => {
+            if (d.id.startsWith('2025.')) return;
+            event.stopPropagation();
+            if (selectedNode === d) {
+                selectedNode = null;
+                unhighlight();
+            } else {
+                selectedNode = d;
+                highlight(d);
+            }
+        });
+
+        svg.on("click", () => {
+            selectedNode = null;
+            unhighlight();
+        });
+
+        function drag(simulation) {
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+                svg.style("cursor", "grabbing");
+            }
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                if (selectedNode !== d) {
+                   d.fx = null;
+                   d.fy = null;
+                }
+                svg.style("cursor", "grab");
+            }
+            return d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended);
+        }
+    </script>
+</body>
+</html>

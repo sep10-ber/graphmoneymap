@@ -11,14 +11,24 @@
         body {
             font-family: 'Noto Sans KR', sans-serif;
             display: flex;
-            flex-direction: column;
-            align-items: center;
             justify-content: center;
+            align-items: center;
+            flex-direction: column;
             height: 100vh;
             margin: 0;
             background-color: #f8f9fa;
             color: #333;
-            overflow: hidden; /* 스크롤 방지 */
+            overflow: hidden;
+        }
+        .main-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .graph-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         h1 {
             color: #2c3e50;
@@ -37,6 +47,32 @@
             background-color: #ffffff;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
+        .side-panel {
+            width: 280px;
+            flex-shrink: 0;
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            box-sizing: border-box; /* 높이 계산을 위해 추가 */
+        }
+        .side-panel h2 {
+            margin-top: 0;
+            font-size: 1.2em;
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .side-panel ol {
+            padding-left: 20px;
+            margin: 0;
+            font-size: 14px;
+        }
+        .side-panel li {
+            margin-bottom: 18px;
+            line-height: 1.6;
+        }
         .link, .arrow, .node {
             transition: opacity 0.3s ease-in-out;
         }
@@ -53,8 +89,7 @@
             font-weight: bold;
             fill: #333;
         }
-        /* 상세 정보 텍스트 스타일 */
-        .detail-text-group, .summary-text {
+        .detail-text-group, .summary-text-group {
              pointer-events: none;
         }
         .detail-text {
@@ -69,13 +104,19 @@
         .summary-text {
             font-size: 12px;
             font-weight: bold;
-            fill: #e74c3c; /* 붉은색 */
+            fill: #e74c3c;
         }
-        /* 노드 원에 대한 전환 효과 추가 */
+        .card-sum-group {
+            transition: opacity 0.3s ease-in-out;
+        }
+        .card-sum-text {
+            font-size: 10px;
+            font-weight: bold;
+            fill: #e74c3c;
+        }
         .node circle {
             transition: filter 0.2s ease-in-out, stroke 0.2s ease-in-out, stroke-width 0.2s ease-in-out;
         }
-        /* 하이라이트 효과를 위한 클래스 */
         .node.highlight circle {
             filter: drop-shadow(0 3px 6px rgba(0,0,0,0.2));
         }
@@ -87,9 +128,23 @@
     </style>
 </head>
 <body>
-    <h1>돈의 지도</h1>
-    <p>노드나 엣지를 클릭하여 돈의 흐름을 강조해보세요.</p>
-    <svg id="money-map"></svg>
+    <div class="graph-container">
+        <h1>돈의 지도</h1>
+        <p>노드나 엣지를 클릭하여 돈의 흐름을 강조해보세요.</p>
+    </div>
+    <div class="main-container">
+        <svg id="money-map"></svg>
+        <div class="side-panel">
+            <h2>탐색 가이드</h2>
+            <ol>
+                <li><strong>기본 보기:</strong> 각 원(노드)은 금융 항목을, 선(엣지)은 돈의 흐름을 나타냅니다. 선 중앙의 화살표는 돈이 이동하는 방향을 보여주며, 선의 굵기는 거래량의 크기를 의미합니다. 원의 크기는 각 항목의 총 금액을 나타냅니다.</li>
+                <li><strong>탐색하기:</strong> 지도를 마우스로 드래그하여 움직이거나, 마우스 휠로 확대/축소할 수 있습니다.</li>
+                <li><strong>노드 집중하기:</strong> 특정 노드를 클릭하면 해당 노드가 중심으로 이동하며 관련된 돈의 흐름이 강조됩니다.</li>
+                <li><strong>엣지 집중하기:</strong> 특정 엣지(선)를 클릭하면 해당 거래와 연결된 두 노드만 선명하게 표시됩니다.</li>
+                <li><strong>초기화:</strong> 그래프의 빈 공간을 클릭하면 모든 강조 효과가 사라지고 원래의 모습으로 돌아옵니다.</li>
+            </ol>
+        </div>
+    </div>
 
     <script>
         // --- 데이터 정의 (모든 노드 포함) ---
@@ -118,8 +173,8 @@
         ];
 
         // --- 시각화 설정 (크기 고정) ---
-        const width = 1200;
-        const height = 530;
+        const width = 720;
+        const height = 580;
 
         const color = d3.scaleOrdinal(["#2ecc71", "#3498db", "#e74c3c", "#e74c3c"]);
         const incomeColor = "#2ecc71";
@@ -135,6 +190,8 @@
             .attr("width", width)
             .attr("height", height)
             .attr("viewBox", [0, 0, width, height]);
+        
+        d3.select(".side-panel").style("height", `${height}px`);
 
         const g = svg.append("g");
         
@@ -184,36 +241,67 @@
             })
             .attr("stroke-width", 2);
 
-        nodeGroup.append("text")
-            .attr("text-anchor", "middle")
-            .attr("y", d => d.details ? -5 : (d.summary ? -5 : 4))
+        const nodeMainTexts = nodeGroup.append("text")
+             .attr("text-anchor", "middle")
+             .attr("y", d => {
+                if (d.id === "W은행") return -8;
+                if (d.details) return -5;
+                if (d.summary) return -5;
+                return 4;
+            })
             .style("font-size", d => d.id === '홍길동' ? '14.4px' : '12px')
             .style("font-weight", "bold")
             .text(d => d.id);
-        
-        const detailTexts = nodeGroup.filter(d => d.details)
-            .append("text")
-            .attr("class", "detail-text-group")
-            .attr("text-anchor", "middle")
-            .attr("y", d => getNodeRadius(d) + 14);
 
-        detailTexts.each(function(d) {
-            const textElement = d3.select(this);
-            d.details.forEach((line, i) => {
-                textElement.append("tspan")
-                    .attr("x", 0)
-                    .attr("dy", i === 0 ? 0 : "1.2em")
-                    .attr("class", i === 2 ? "sub-detail-text" : "detail-text")
-                    .text(line);
-            });
+        const wBankNode = nodeGroup.filter(d => d.id === 'W은행');
+        const cardSumGroup = wBankNode.append("g")
+            .attr("class", "card-sum-group")
+            .style("opacity", 0);
+        
+        const cardSumText = cardSumGroup.append("text")
+            .attr("class", "card-sum-text")
+            .attr("text-anchor", "middle")
+            .attr("y", 10);
+
+        cardSumGroup.each(function() {
+            const bbox = cardSumText.node().getBBox();
+            d3.select(this).insert("rect", "text")
+                .attr("x", bbox.x - 2)
+                .attr("y", bbox.y - 1)
+                .attr("width", bbox.width + 4)
+                .attr("height", bbox.height + 2)
+                .attr("fill", "white");
         });
 
-        const summaryText = nodeGroup.filter(d => d.summary)
-            .append("text")
-            .attr("class", "summary-text")
-            .attr("text-anchor", "middle")
-            .attr("y", d => getNodeRadius(d) + 14)
-            .text(d => d.summary);
+        const detailGroup = nodeGroup.filter(d => d.details || d.summary)
+            .append("g")
+            .attr("class", "detail-text-group")
+            .attr("transform", d => `translate(0, ${getNodeRadius(d) + 14})`);
+
+        detailGroup.each(function(d) {
+            const group = d3.select(this);
+            const textElement = group.append("text").attr("text-anchor", "middle");
+
+            if (d.details) {
+                d.details.forEach((line, i) => {
+                    textElement.append("tspan")
+                        .attr("x", 0)
+                        .attr("dy", i === 0 ? 0 : "1.2em")
+                        .attr("class", i === 2 ? "sub-detail-text" : "detail-text")
+                        .text(line);
+                });
+            } else if (d.summary) {
+                textElement.attr("class", "summary-text").text(d.summary);
+            }
+            
+            const bbox = textElement.node().getBBox();
+            group.insert("rect", "text")
+                .attr("x", bbox.x - 4)
+                .attr("y", bbox.y - 2)
+                .attr("width", bbox.width + 8)
+                .attr("height", bbox.height + 4)
+                .attr("fill", "white");
+        });
         
         const badge = nodeGroup.filter(d => d.count)
             .append("g")
@@ -229,7 +317,7 @@
             .attr("r", 10)
             .attr("fill", d => {
                 if (d.id === '홍길동') return '#000000';
-                if (d.id === '총 지출') return '#888888'; // '총 지출' 배지 색상을 회색으로 변경
+                if (d.id === '총 지출') return '#888888'; 
                 return color(d.group);
             });
 
@@ -262,6 +350,21 @@
             g.attr("transform", event.transform);
         });
         svg.call(zoomHandler);
+        
+        let initialZoomDone = false;
+        simulation.on("end", () => {
+            if (initialZoomDone) return;
+            const bbox = g.node().getBBox();
+            const scale = Math.min(width / bbox.width, height / bbox.height) * 0.9;
+            const translate = [
+                width / 2 - scale * (bbox.x + bbox.width / 2),
+                height / 2 - scale * (bbox.y + bbox.height / 2)
+            ];
+            const transform = d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale);
+            
+            svg.call(zoomHandler.transform, transform);
+            initialZoomDone = true;
+        });
 
         let selectedNode = null;
         let selectedLink = null;
@@ -270,7 +373,6 @@
             const isNodeSelected = !!selectedNode;
             const isLinkSelected = !!selectedLink;
 
-            // --- 하이라이트 초기화 로직 ---
             nodeGroup.style("opacity", 1);
             linkGroup.style("opacity", 1);
             circles
@@ -278,51 +380,75 @@
                 .attr("stroke-width", 2);
             linkLines.attr("stroke", "#999");
             linkArrows.attr("fill", "#999");
+            nodeGroup.select(".card-sum-group").style("opacity", 0);
 
             if (!isNodeSelected && !isLinkSelected) return;
             
-            // --- 선택 시 흐리게 처리 ---
             nodeGroup.style("opacity", 0.2);
             linkGroup.style("opacity", 0.2);
-
+            
+            let nodesToHighlight = new Set();
+            let linksToHighlight = new Set();
+            
             if (isNodeSelected) {
                 const d = selectedNode;
-                const mainNode = d.parent ? nodes.find(n => n.id === d.parent) : d;
-
-                const highlightedNodes = nodeGroup.filter(n => n === d || n === mainNode);
-                highlightedNodes.style("opacity", 1);
-                
-                highlightedNodes.select("circle")
-                    .attr("stroke-width", 4);
-
-                linkGroup.filter(l => l.source === mainNode || l.target === mainNode || l.source === d || l.target === d)
-                    .style("opacity", 1)
-                    .each(function(l) {
-                        const colorLogic = (l) => {
-                            if (l.source.id === '총 소득') return incomeColor;
-                            if (l.target.id === '투자/저축') return assetColor;
-                            return outcomeColor;
-                        };
-                        d3.select(this).select("line").attr("stroke", colorLogic(l));
-                        d3.select(this).select(".arrow").attr("fill", colorLogic(l));
-                    });
+                nodesToHighlight.add(d);
+                links.forEach(l => {
+                    if (l.source === d) {
+                        linksToHighlight.add(l);
+                        nodesToHighlight.add(l.target);
+                    }
+                    if (l.target === d) {
+                        linksToHighlight.add(l);
+                        nodesToHighlight.add(l.source);
+                    }
+                });
             }
 
             if (isLinkSelected) {
                 const l = selectedLink;
-                nodeGroup.filter(n => n === l.source || n === l.target).style("opacity", 1);
-                
-                const linkElement = linkGroup.filter(d => d === l);
-                linkElement.style("opacity", 1);
-
-                const colorLogic = (l) => {
-                    if (l.source.id === '총 소득') return incomeColor;
-                    if (l.target.id === '투자/저축') return assetColor;
-                    return outcomeColor;
-                };
-                linkElement.select("line").attr("stroke", colorLogic(l));
-                linkElement.select(".arrow").attr("fill", colorLogic(l));
+                linksToHighlight.add(l);
+                nodesToHighlight.add(l.source);
+                nodesToHighlight.add(l.target);
             }
+
+            const highlightedNodes = nodeGroup.filter(n => nodesToHighlight.has(n));
+            highlightedNodes.style("opacity", 1);
+            highlightedNodes.select("circle").attr("stroke-width", 4);
+
+            if (nodesToHighlight.has(nodes.find(n => n.id === 'W은행'))) {
+                let textToShow = "+1,498,300원"; // Default sum
+                if (isLinkSelected) {
+                    if (selectedLink.source.id === 'S카드' && selectedLink.target.id === 'W은행') {
+                        textToShow = "856,200원";
+                    } else if (selectedLink.source.id === 'H 카드' && selectedLink.target.id === 'W은행') {
+                        textToShow = "485,300원";
+                    }
+                }
+                const wBankNode = nodeGroup.filter(n => n.id === 'W은행');
+                const cardSumTextElement = wBankNode.select(".card-sum-text").text(textToShow);
+                const cardSumGroupElement = wBankNode.select(".card-sum-group").style("opacity", 1);
+                cardSumGroupElement.each(function() {
+                    const bbox = cardSumTextElement.node().getBBox();
+                    d3.select(this).select("rect")
+                        .attr("x", bbox.x - 2)
+                        .attr("y", bbox.y - 1)
+                        .attr("width", bbox.width + 4)
+                        .attr("height", bbox.height + 2);
+                });
+            }
+
+            const highlightedLinks = linkGroup.filter(l => linksToHighlight.has(l));
+            highlightedLinks.style("opacity", 1)
+                .each(function(l) {
+                    const colorLogic = (l) => {
+                        if (l.source.id === '총 소득') return incomeColor;
+                        if (l.target.id === '투자/저축') return assetColor;
+                        return outcomeColor;
+                    };
+                    d3.select(this).select("line").attr("stroke", colorLogic(l));
+                    d3.select(this).select(".arrow").attr("fill", colorLogic(l));
+                });
         }
 
         nodeGroup.on("click", (event, d) => {
@@ -332,10 +458,31 @@
             updateHighlight();
 
             if (selectedNode) {
-                const k = d3.zoomTransform(svg.node()).k;
+                let nodesToZoom = new Set();
+                nodesToZoom.add(selectedNode);
+                links.forEach(l => {
+                    if (l.source === selectedNode) nodesToZoom.add(l.target);
+                    if (l.target === selectedNode) nodesToZoom.add(l.source);
+                });
+
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                nodesToZoom.forEach(n => {
+                    const radius = getNodeRadius(n);
+                    minX = Math.min(minX, n.x - radius);
+                    maxX = Math.max(maxX, n.x + radius);
+                    minY = Math.min(minY, n.y - radius);
+                    maxY = Math.max(maxY, n.y + radius);
+                });
+
+                const bboxWidth = maxX - minX;
+                const bboxHeight = maxY - minY;
+                const scale = Math.min(2, 0.9 / Math.max(bboxWidth / width, bboxHeight / height));
+                const midX = (minX + maxX) / 2;
+                const midY = (minY + maxY) / 2;
+
                 svg.transition().duration(750).call(
                     zoomHandler.transform,
-                    d3.zoomIdentity.translate(width / 2, height / 2).scale(k).translate(-d.x, -d.y)
+                    d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-midX, -midY)
                 );
             }
         });
